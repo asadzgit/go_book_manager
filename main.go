@@ -3,7 +3,11 @@ package main
 import (
     "encoding/json"
     "fmt"
+    "io/ioutil"
     "net/http"
+    "os"
+    "strconv"
+    "strings"
 )
 
 type Book struct {
@@ -14,8 +18,11 @@ type Book struct {
 
 var books []Book
 var idCounter int
+const fileName = "books.txt"
 
 func main() {
+    loadBooks()
+
     http.HandleFunc("/books", booksHandler)
     fmt.Println("Server is running on port 8080...")
     http.ListenAndServe(":8080", nil)
@@ -46,6 +53,56 @@ func createBook(w http.ResponseWriter, r *http.Request) {
     idCounter++
     book.ID = idCounter
     books = append(books, book)
+    saveBooks()
     w.WriteHeader(http.StatusCreated)
     json.NewEncoder(w).Encode(book)
+}
+
+func loadBooks() {
+    file, err := os.Open(fileName)
+    if err != nil {
+        if os.IsNotExist(err) {
+            return
+        }
+        fmt.Println("Error opening file:", err)
+        return
+    }
+    defer file.Close()
+
+    data, err := ioutil.ReadAll(file)
+    if err != nil {
+        fmt.Println("Error reading file:", err)
+        return
+    }
+
+    lines := strings.Split(string(data), "\n")
+    for _, line := range lines {
+        if line == "" {
+            continue
+        }
+        parts := strings.Split(line, ",")
+        id, _ := strconv.Atoi(parts[0])
+        book := Book{
+            ID:     id,
+            Title:  parts[1],
+            Author: parts[2],
+        }
+        books = append(books, book)
+        if id > idCounter {
+            idCounter = id
+        }
+    }
+}
+
+func saveBooks() {
+    var data strings.Builder
+    for _, book := range books {
+        line := fmt.Sprintf("%d,%s,%s\n", book.ID, book.Title, book.Author)
+        data.WriteString(line)
+    }
+
+    err := ioutil.WriteFile(fileName, []byte(data.String()), 0644)
+    if err != nil {
+        fmt.Println("Error writing to file:", err)
+    }
 }
