@@ -1,13 +1,12 @@
 package main
 
 import (
+    "database/sql"
     "encoding/json"
     "fmt"
-    "io/ioutil"
+    "log"
     "net/http"
-    "os"
-    "strconv"
-    "strings"
+    _ "github.com/lib/pq"
 )
 
 type Book struct {
@@ -16,12 +15,32 @@ type Book struct {
     Author string `json:"author"`
 }
 
-var books []Book
-var idCounter int
-const fileName = "books.txt"
+var db *sql.DB
+
+const (
+    host     = "localhost"
+    port     = 5432
+    user     = "postgres"
+    password = "postgres"
+    dbname   = "book_management"
+)
 
 func main() {
-    loadBooks()
+    psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
+        host, port, user, password, dbname)
+
+    var err error
+    db, err = sql.Open("postgres", psqlInfo)
+    if err != nil {
+        log.Fatalf("Error opening database: %q", err)
+    }
+
+    defer db.Close()
+
+    err = db.Ping()
+    if err != nil {
+        log.Fatalf("Cannot connect to the database: %q", err)
+    }
 
     http.HandleFunc("/books", booksHandler)
     fmt.Println("Server is running on port 8080...")
@@ -40,6 +59,23 @@ func booksHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func getBooks(w http.ResponseWriter, r *http.Request) {
+    rows, err := db.Query("SELECT id, title, author FROM books")
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+    defer rows.Close()
+
+    var books []Book
+    for rows.Next() {
+        var book Book
+        if err := rows.Scan(&book.ID, &book.Title, &book.Author); err != nil {
+            http.Error(w, err.Error(), http.StatusInternalServerError)
+            return
+        }
+        books = append(books, book)
+    }
+
     w.Header().Set("Content-Type", "application/json")
     json.NewEncoder(w).Encode(books)
 }
@@ -50,59 +86,15 @@ func createBook(w http.ResponseWriter, r *http.Request) {
         http.Error(w, err.Error(), http.StatusBadRequest)
         return
     }
-    idCounter++
-    book.ID = idCounter
-    books = append(books, book)
-    saveBooks()
+
+    var lastInsertID int
+    err := db.QueryRow("INSERT INTO books(title, author) VALUES($1, $2) RETURNING id", book.Title, book.Author).Scan(&lastInsertID)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+
+    book.ID = lastInsertID
     w.WriteHeader(http.StatusCreated)
     json.NewEncoder(w).Encode(book)
-}
-
-func loadBooks() {
-    file, err := os.Open(fileName)
-    if err != nil {
-        if os.IsNotExist(err) {
-            return
-        }
-        fmt.Println("Error opening file:", err)
-        return
-    }
-    defer file.Close()
-
-    data, err := ioutil.ReadAll(file)
-    if err != nil {
-        fmt.Println("Error reading file:", err)
-        return
-    }
-
-    lines := strings.Split(string(data), "\n")
-    for _, line := range lines {
-        if line == "" {
-            continue
-        }
-        parts := strings.Split(line, ",")
-        id, _ := strconv.Atoi(parts[0])
-        book := Book{
-            ID:     id,
-            Title:  parts[1],
-            Author: parts[2],
-        }
-        books = append(books, book)
-        if id > idCounter {
-            idCounter = id
-        }
-    }
-}
-
-func saveBooks() {
-    var data strings.Builder
-    for _, book := range books {
-        line := fmt.Sprintf("%d,%s,%s\n", book.ID, book.Title, book.Author)
-        data.WriteString(line)
-    }
-
-    err := ioutil.WriteFile(fileName, []byte(data.String()), 0644)
-    if err != nil {
-        fmt.Println("Error writing to file:", err)
-    }
 }
