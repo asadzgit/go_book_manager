@@ -29,3 +29,9 @@ http://localhost:8080/books
 
 ## v2
 handle reading from and writing to a text file instead of array.
+
+## v3
+### using database for storage
+use `CREATE DATABASE book_management;` in your postgres terminal (`psql`) to create the database.
+
+Then use `go run migrate.go` to run this for creating the books table
