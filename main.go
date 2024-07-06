@@ -5,6 +5,8 @@ import (
     "encoding/json"
     "fmt"
     "log"
+    "github.com/gorilla/mux"
+    "html/template"
     "net/http"
     _ "github.com/lib/pq"
 )
@@ -42,9 +44,28 @@ func main() {
         log.Fatalf("Cannot connect to the database: %q", err)
     }
 
-    http.HandleFunc("/books", booksHandler)
+    router := mux.NewRouter()
     fmt.Println("Server is running on port 8080...")
-    http.ListenAndServe(":8080", nil)
+    
+    // we’re using the `template.ParseFiles` function to parse the HTML template. 
+    // The `tmpl.Execute` function is used to render the template and write the result to the `http.ResponseWriter` interface. 
+    // In this case, we’re passing the name “Mehul” to the template. 
+    router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+        tmpl, err := template.ParseFiles("templates/home.html")
+        if err != nil {
+            http.Error(w, err.Error(), http.StatusInternalServerError)
+            return
+        }
+        
+        err = tmpl.Execute(w, "Asad")
+        if err != nil {
+            http.Error(w, err.Error(), http.StatusInternalServerError)
+            return
+        }
+    })
+    
+    router.HandleFunc("/books", booksHandler)
+    http.ListenAndServe(":8080", router)
 }
 
 func booksHandler(w http.ResponseWriter, r *http.Request) {
@@ -77,7 +98,8 @@ func getBooks(w http.ResponseWriter, r *http.Request) {
     }
 
     query_params := r.URL.Query() /* getting query params from url */
-    fmt.Fprintf(w, "%s", query_params) /* sending simple plain text */
+    fmt.Println("%s", query_params)
+    // fmt.Fprintf(w, "%s", query_params) /* sending simple plain text */
     w.Header().Set("Content-Type", "application/json")
     json.NewEncoder(w).Encode(books)
 }
