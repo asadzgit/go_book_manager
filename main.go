@@ -76,6 +76,8 @@ func getBooks(w http.ResponseWriter, r *http.Request) {
         books = append(books, book)
     }
 
+    query_params := r.URL.Query() /* getting query params from url */
+    fmt.Fprintf(w, "%s", query_params) /* sending simple plain text */
     w.Header().Set("Content-Type", "application/json")
     json.NewEncoder(w).Encode(books)
 }
